@@ -1,0 +1,125 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+wt = read.csv("weather_data.csv")
+pr = read.csv("performance_data.csv")
+
+#Subseting performance data
+grid = pr[c("ENV_ID","LAT","LONG")]
+grid = grid[!duplicated(grid[,"ENV_ID"]),]
+
+
+wt_num = c("DAYL","PREC","SRAD","SWE","TMAX","TMIN","VP")
+```
+
+```{r}
+#Graphing the Distribution of environments
+
+library(ggplot2)
+library(ggmap)
+
+us <- c(left = -125, bottom = 25.75, right = -67, top = 49)
+
+world <- c(
+  left = -170,
+  bottom = -60,
+  right = 170,
+  top = 80
+)
+
+map <- get_stamenmap(us, zoom = 4, maptype = "toner-lite")
+
+MapPoints <- ggmap(map) +
+  geom_point(aes(x = LONG, y = LAT, colour = "red", size = 3), data = grid)
+
+    ggsave("Sygenta challenge distribution.jpg",
+      width = 80,
+      height = 64,
+      units = "cm",
+      limitsize = TRUE)
+    
+
+```
+```{r}
+#column means
+
+wt_means = aggregate(wt[,wt_num], list(wt$ENV_ID), mean)
+
+
+
+
+```
+```{r}
+#factor analysis to define groups
+#cheking correlation between variables
+cor(wt_means[,wt_num])
+
+#principal componente analysis
+fitPC <- princomp(wt_means[,wt_num], cor=TRUE)
+
+summary(fitPC)
+loadings(fitPC)
+plot(fit,type="lines")
+
+
+
+
+```
+
+
+
+```{r}
+#factor analysis
+
+
+fitFA = factanal(wt_means[,wt_num], factors = 2, rotation = "varimax")
+fitFA
+load <- fitFA$loadings[,1:2] 
+plot(load,type="n") # set up plot 
+text(load,labels=names(wt_means[,wt_num]),cex=.7) # add variable names
+
+
+```
+
+```{r}
+# Checking the number of groups with other methods
+wss <- (nrow(wt_means[,wt_num])-1)*sum(apply(wt_means[,wt_num],2,var))
+for (i in 2:15) wss[i] <- sum(kmeans(wt_means[,wt_num], 
+  	centers=i)$withinss)
+plot(1:15, wss, type="b", xlab="Number of Clusters",
+  ylab="Within groups sum of squares")
+```
+
+```{r}
+#clustering
+
+# K-Means Cluster Analysis
+fitKmeans <- kmeans(wt_means[,wt_num], 2) # 5 cluster solution
+# get cluster means 
+aggregate(wt_means[,wt_num],by=list(fitKmeans$cluster),FUN=mean)
+
+wt_clustered = data.frame(wt_means,fitKmeans$cluster)
+colnames(wt_clustered)[1] <- "ENV_ID"
+wt_clustered_grid = merge(wt_clustered,grid, by="ENV_ID")
+
+#mapping clusters
+
+MapPoints <- ggmap(map) +
+  geom_point(aes(x = LONG, y = LAT, colour = fitKmeans.cluster, size = 3), data = Newwt)
+
+    ggsave("Sygenta challenge distribution_cluster.jpg",
+      width = 80,
+      height = 64,
+      units = "cm",
+      limitsize = TRUE)
+
+```
+
+```{r}
+
+```
+
