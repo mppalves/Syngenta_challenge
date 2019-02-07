@@ -1,0 +1,43 @@
+---
+title: "Main"
+author: "Marcos Paulo Pedrosa ALves, PhD"
+date: "Jan 17, 2018"
+output: html_document
+---
+
+```{r}
+
+#Loading files and function files
+library(car)
+library(plyr)
+source('createFeatures.R')
+source("testing_heat_features - simple.R")
+
+#loading database
+wt = read.csv("weather_data.csv") #Syngenta competition database
+pr = read.csv("performance_data.csv") #Syngenta Competition database
+
+#selecting hybrids that will be tested
+count_hyb = count(pr,"HYBRID_ID")
+order_list = count_hyb[order(count_hyb$freq),]
+hyb_list = order_list[2000:2005,1]
+
+```
+```{r}
+#measuring run time.
+start_time <- Sys.time()
+
+lm_list = lapply(hyb_list, testing_heat_features, pr = pr, wt = wt, temp_treshold = 32, stages = 2, soil_groups = 5)
+
+res=NULL
+for(i in 1:length(lm_list)){
+ x = as.data.frame(lm_list[[i]])
+ res = rbind(res,x) 
+}
+write.csv(res,file = "results.csv")
+end_time <- Sys.time()
+
+#Total run time
+end_time - start_time
+```
+
