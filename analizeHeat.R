@@ -6,6 +6,7 @@
 #' @parameters 
 #' wt: wheather data. 
 #' heat treshold
+#' #' @author Marcos Paulo Pedrosa Alves
 
 analizeHeat <- function(wt, heat_treshold) {
   #Defining heat stress

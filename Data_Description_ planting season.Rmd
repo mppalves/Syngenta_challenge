@@ -1,0 +1,315 @@
+---
+title: "Data description and preliminary analysis"
+Autor: Marcos Paulo Pedrosa Alves
+---
+
+```{r}
+library(ggplot2)
+library(ggmap)
+library(plyr)
+library(car)
+```
+```{r}
+wt = read.csv("weather_data.csv")
+pr = read.csv("performance_data.csv")
+
+#Subseting performance data
+wt_grid = pr[c("ENV_ID","LAT","LONG")]
+wt_grid = wt_grid[!duplicated(wt_grid[,"ENV_ID"]),]
+
+#Separating only the days of growing
+pr_date = pr
+pr_date$DAY = as.numeric(format(as.Date(pr_date$PLANT_DATE,format="%Y-%m-%d"), "%d"))
+pr_date$MONTH = as.numeric(format(as.Date(pr_date$PLANT_DATE,format="%Y-%m-%d"), "%m"))
+
+#standardizing irrigation
+pr_date[pr_date$IRRIGATION == "NONE","IRRIGATION"] = "DRY"
+
+#checking the strain with the largest number of observations 
+pr_HYB = count(pr_date,"HYBRID_ID")
+pr_HYB[pr_HYB$freq==max(pr_HYB$freq),]
+
+#Creating a database with the most experimented HYBRID (H1117	25624)
+pr_H1117 = pr_date[pr_date$HYBRID_ID=="H1117",]
+
+#tranforming plant and harvest date in 365 days
+pr_H1117$PLANT_DATE = as.numeric(strftime(pr_H1117$PLANT_DATE, format = "%j"))
+pr_H1117$HARVEST_DATE = as.numeric(strftime(pr_H1117$HARVEST_DATE, format = "%j"))
+
+#grouping by average
+pr_H1117 = aggregate(pr_H1117[,c(5,6,7,8,9,10,12,13,14,15,16,17,18,19,20,21,22,23,24)], by = list(pr_H1117$ENV_ID,pr_H1117$IRRIGATION), FUN = mean);
+
+#correcting gouping names
+colnames(pr_H1117)[c(1,2)] = c("ENV_ID", "IRRIGATION")
+
+#substing wt database to have only H1117 data
+env_H1117 = unique(pr_H1117$ENV_ID)
+# for (i in env_H1117) {
+#   x = wt[wt$ENV_ID==i,]
+#   wt_H1117 = rbind(wt_H1117,x)
+# }
+
+wt_H1117 = wt[wt$ENV_ID %in% env_H1117,]
+
+#Selecting only the data relavant in the wt table
+y=data.frame()
+for (i in env_H1117) {
+  z = pr_H1117[pr_H1117$ENV_ID == i, c("PLANT_DATE", "HARVEST_DATE")]
+  x = wt_H1117[which(wt_H1117$ENV_ID == i & wt_H1117$DAY_NUM > as.numeric(z[1]) & wt_H1117$DAY_NUM < as.numeric(z[2])),]
+  y = rbind(y,x)
+}
+
+wt_H1117 = y
+wt_H1117$TAVG = rowMeans(wt_H1117[,c("TMAX","TMIN")])
+
+
+#subsetted data: 
+#wt_H1117
+#pr_H1117
+
+#selecting columns relevant for climate and soil analysis
+#wt_num = c("VP", "PREC")
+wt_num = c("TMAX", "TMIN", "TAVG")
+pr_num_soil_type = c("ELEVATION","CLAY","SILT","SAND","AWC","PH","OM","CEC","KSAT")
+
+```
+
+```{r}
+#Graphing the Distribution of environments
+
+us <- c(left = -125, bottom = 25.75, right = -67, top = 49)
+
+world <- c(
+  left = -170,
+  bottom = -60,
+  right = 170,
+  top = 80
+)
+
+map <- get_stamenmap(us, zoom = 4, maptype = "toner-lite")
+
+MapPoints <- ggmap(map) +
+  geom_point(aes(x = LONG, y = LAT, colour = "red", size = 3), data = wt_grid)
+
+    ggsave("Sygenta challenge distribution.jpg",
+      width = 80,
+      height = 64,
+      units = "cm",
+      limitsize = TRUE)
+    
+
+```
+
+```{r}
+#column means
+
+wt_means = aggregate(wt_H1117[,wt_num], list(wt_H1117$ENV_ID), mean)
+
+```
+```{r}
+#Principal component analysis to define weather groups
+#cheking correlation between variables
+cor(wt_means[,wt_num])
+
+#principal componente analysis
+fitPC <- princomp(wt_means[,wt_num], cor=TRUE)
+
+summary(fitPC)
+loadings(fitPC)
+plot(fitPC,type="lines")
+
+```
+```{r}
+#factor analysis
+
+
+fitFA = factanal(wt_means[,wt_num], factors = 2, rotation = "varimax")
+fitFA
+load <- fitFA$loadings[,1:2] 
+plot(load,type="n") # set up plot 
+text(load,labels=names(wt_means[,wt_num]),cex=.7) # add variable names
+
+
+```
+```{r}
+# Checking the number of groups with other methods (Drawing elbow)
+wss <- (nrow(wt_means[,wt_num])-1)*sum(apply(wt_means[,wt_num],2,var))
+for (i in 2:15) wss[i] <- sum(kmeans(wt_means[,wt_num], 
+  	centers=i)$withinss)
+plot(1:15, wss, type="b", xlab="Number of Clusters",
+  ylab="Within groups sum of squares")
+```
+```{r}
+#Weather types
+
+#column means
+
+wt_means = aggregate(wt_H1117[,wt_num], list(wt_H1117$ENV_ID), mean)
+
+# K-Means Cluster Analysis
+fitKmeans <- kmeans(wt_means[,wt_num], 8) # 3 cluster solution
+# get cluster means 
+aggregate(wt_means[,wt_num],by=list(fitKmeans$cluster),FUN=mean)
+
+wt_clustered = data.frame(wt_means,fitKmeans$cluster)
+colnames(wt_clustered)[1] <- "ENV_ID"
+wt_clustered_grid = merge(wt_clustered, wt_grid, by="ENV_ID")
+colnames(wt_clustered_grid)[which(colnames(wt_clustered_grid) == "fitKmeans.cluster")] = "WEATHER_GROUP"
+
+#mapping clusters
+MapPoints <- ggmap(map) +
+  geom_point(aes(x = LONG, y = LAT, colour = WEATHER_GROUP, size = 0.1), data = wt_clustered_grid) +        scale_color_gradientn(colours = c("gold","darkgreen","blue")) +
+  ggtitle("Kmeans clustering based on weather data");MapPoints
+
+    # ggsave("Sygenta challenge distribution_cluster3.jpg",
+    #        width = 30,height = 24,units = "cm", limitsize = TRUE)
+
+```
+```{r}
+#Soil types exploration
+
+
+#Principal component analysis to define Soil groups
+#cheking correlation between variables
+soil_features = cor(pr[,pr_num_soil_type])
+
+#principal componente analysis
+fit_soil_type <- princomp(pr[,pr_num_soil_type], cor=TRUE)
+
+summary(fit_soil_type)
+loadings(fit_soil_type)
+plot(fit_soil_type,type="lines")
+
+#factor analysis to define Soil groups
+
+fit_soil_type_FA = factanal(pr[,pr_num_soil_type], factors = 3, rotation = "varimax")
+fit_soil_type_FA
+load <- fit_soil_type_FA$loadings[,1:2] 
+plot(load,type="n") # set up plot 
+text(load,labels=names(pr[,pr_num_soil_type]),cex=.7) # add variable names
+
+
+# K-Means Cluster Analysis
+fitKmeans <- kmeans(pr[,pr_num_soil_type], 3) # 3 cluster solution
+# get cluster means 
+aggregate(pr[,pr_num_soil_type],by=list(fitKmeans$cluster),FUN=mean)
+
+pr_soil_clustered = data.frame(pr,fitKmeans$cluster)
+colnames(pr_soil_clustered)[23] <- "SOILGROUP"
+
+
+MapPoints <- ggmap(map) +
+  geom_point(aes(x = LONG, y = LAT, colour = SOILGROUP, size = 4), data = pr_soil_clustered) + 
+  scale_color_gradientn(colours = c("gold","darkgreen","blue")) +
+  ggtitle("Soil cluster");MapPoints
+
+    # ggsave("Sygenta challenge Soil_cluster3.jpg",
+    #        width = 30,height = 24,units = "cm", limitsize = TRUE)
+    
+```
+```{r}
+
+#Variable evaluation per year and location
+
+envi_year = unique(pr_H1117[,c("YEAR","ENV_ID")])
+wt_year_climate_group = merge(envi_year,wt_clustered_grid, by="ENV_ID")
+
+#TMAX
+boxplot(wt_year_climate_group[,"TMAX"] ~ wt_year_climate_group[,"WEATHER_GROUP"] * wt_year_climate_group[,"YEAR"],  col=(c("gold","darkgreen")), main = "Max temperature distribution per year and climatic group", xlab = "Climatic group and Year",ylab = "Max. Temp")
+
+legend(-1, 31, legend=c("Clima 1", "Clima 2", "Clima 3"),
+       col=c("gold","darkgreen","blue"), lty=1:2, cex=0.7,
+       title="Line types", text.font=4)
+
+#TMIN
+boxplot(wt_year_climate_group[,"TAVG"] ~ wt_year_climate_group[,"WEATHER_GROUP"] * wt_year_climate_group[,"YEAR"],  col=(c("gold","darkgreen")), main = "Min temperature distribution per year and climatic group", xlab = "Climatic group and Year",ylab = "Max. Temp")
+
+#PREC
+boxplot(wt_year_climate_group[,"PREC"] ~ wt_year_climate_group[,"WEATHER_GROUP"] * wt_year_climate_group[,"YEAR"],  col=(c("gold","darkgreen")), main = "Precipitation distribution per year and climatic group", xlab = "Climatic group and Year",ylab = "Precipitation")
+
+
+# #SWE
+# boxplot(wt_year_climate_group[,"SWE"] ~ wt_year_climate_group[,"WEATHER_GROUP"] * wt_year_climate_group[,"YEAR"],  col=(c("gold","darkgreen")), main = "Snow Water Equivalent distribution per year and climatic group", xlab = "Climatic group and Year",ylab = "Snow Water Equivalent")
+
+
+#SRAD
+boxplot(wt_year_climate_group[,"SRAD"] ~ wt_year_climate_group[,"WEATHER_GROUP"] * wt_year_climate_group[,"YEAR"],  col=(c("gold","darkgreen")), main = "Solar radiation distribution per year and climatic group", xlab = "Climatic group and Year",ylab = "Solar radiation")
+
+# 
+# #DAYL
+# boxplot(wt_year_climate_group[,"DAYL"] ~ wt_year_climate_group[,"WEATHER_GROUP"] * wt_year_climate_group[,"YEAR"],  col=(c("gold","darkgreen")), main = "Day length distribution per year and climatic group", xlab = "Climatic group and Year",ylab = "Day length", outline=FALSE)
+
+
+#VP
+boxplot(wt_year_climate_group[,"VP"] ~ wt_year_climate_group[,"WEATHER_GROUP"] * wt_year_climate_group[,"YEAR"],  col=(c("gold","darkgreen")), main = "Vapor pressure distribution per year and climatic group", xlab = "Climatic group and Year",ylab = "Vapor pressure", outline=FALSE)
+
+```
+```{r}
+envi_year = unique(pr[,c("YEAR","ENV_ID")])
+wt_year_climate_group = merge(envi_year,wt_clustered_grid, by="ENV_ID")
+pr_soil_clustered
+
+pr_soil_weather = merge(pr_soil_clustered, wt_clustered_grid[,c("ENV_ID", "WEATHER_GROUP")], by="ENV_ID")
+
+
+#"ELEVATION"
+boxplot(pr_soil_weather[,"ELEVATION"] ~ pr_soil_weather[,"SOILGROUP"],  col=(c("gold","darkgreen","blue")), main = "Elevation", xlab = "soil groups",ylab = "Yield")
+
+#"CLAY"
+boxplot(pr_soil_weather[,"CLAY"] ~ pr_soil_weather[,"SOILGROUP"],  col=(c("gold","darkgreen","blue")), main = "CLAY", xlab = "soil groups",ylab = "Yield")
+
+#"SILT"
+boxplot(pr_soil_weather[,"SILT"] ~ pr_soil_weather[,"SOILGROUP"],  col=(c("gold","darkgreen","blue")), main = "SILT", xlab = "soil groups",ylab = "Yield")
+
+#"SAND"
+boxplot(pr_soil_weather[,"SAND"] ~ pr_soil_weather[,"SOILGROUP"],  col=(c("gold","darkgreen","blue")), main = "SAND", xlab = "soil groups",ylab = "Yield")
+
+#"AWC"
+boxplot(pr_soil_weather[,"AWC"] ~ pr_soil_weather[,"SOILGROUP"],  col=(c("gold","darkgreen","blue")), main = "AWC", xlab = "soil groups",ylab = "Yield")
+
+#"PH"
+boxplot(pr_soil_weather[,"PH"] ~ pr_soil_weather[,"SOILGROUP"],  col=(c("gold","darkgreen","blue")), main = "PH", xlab = "soil groups",ylab = "Yield")
+
+#"OM"
+boxplot(pr_soil_weather[,"OM"] ~ pr_soil_weather[,"SOILGROUP"],  col=(c("gold","darkgreen","blue")), main = "OM", xlab = "soil groups",ylab = "Yield")
+
+#"KSAT"
+boxplot(pr_soil_weather[,"KSAT"] ~ pr_soil_weather[,"SOILGROUP"],  col=(c("gold","darkgreen","blue")), main = "KSAT", xlab = "soil groups",ylab = "Yield")
+
+
+```
+```{r}
+#brief exploration between soil and Yields
+
+#YIELD - year soil
+boxplot(pr_soil_weather[,"YIELD"] ~ pr_soil_weather[,"SOILGROUP"]*pr_soil_weather[,"YEAR"],  col=(c("gold","darkgreen","blue")), main = "Productivity by soil type per year", xlab = "soil type and year",ylab = "Yield")
+
+#YIELD - weather and soil
+boxplot(pr_soil_weather[,"YIELD"] ~ pr_soil_weather[,"WEATHER_GROUP"]*pr_soil_weather[,"SOILGROUP"]*pr_soil_weather[,"WEATHER_GROUP"],  col=(c("gold","darkgreen","blue")), main = "Productivity by weather and soil combination", xlab = "weather and soil groups",ylab = "Yield")
+
+#exploring the weakest combination of weather and soil
+pr_2.1 = pr_soil_weather[which(pr_soil_weather$WEATHER_GROUP==2 & pr_soil_weather$SOILGROUP ==1),]
+summary(pr_2.1)
+
+
+#exploring the weakest combination of weather and soil
+pr_1.3 = pr_soil_weather[which(pr_soil_weather$WEATHER_GROUP==1 & pr_soil_weather$SOILGROUP ==3),]
+summary(pr_1.3)
+```
+```{r}
+#linear regression
+wt_pr_H1117 = merge(wt_clustered_grid, pr_H1117, by = "ENV_ID")
+
+fit = lm(YIELD ~ TMAX + I(TMAX^2) , data = wt_pr_H1117[wt_pr_H1117$IRRIGATION=="DRY",])
+summary(fit)
+plot(YIELD ~ TMAX, data = wt_pr_H1117[wt_pr_H1117$IRRIGATION=="DRY",])
+lines(wt_pr_H1117[wt_pr_H1117$IRRIGATION=="DRY",]$YIELD, predict(fit), col = "blue")
+
+as.data.frame(predict(fit))
+
+scatterplot(YIELD ~ TMAX, data = wt_pr_H1117[wt_pr_H1117$IRRIGATION=="DRY",])
+
+
+```
+
+

@@ -1,8 +1,10 @@
+#' @title Testing heat features
+#' @Objectives the function below evaluate the results of a single strain by simple linear regression and scatterplots of two 
+#' features with the greatest potential to explain the variation in the hybrids.
+#' Additional lm are offered on the page bottom.
+#' @author Marcos Paulo Pedrosa Alves
+
 require(car)
-
-#the function below evaluate the results of a single strain by simple linear regression and scatterplots of two 
-#features with the greatest potential to explain the variation in the hybrids.
-
 lmp <- function (modelobject) {
   if (class(modelobject) != "lm") stop("Not an object of class 'lm' ")
   f <- summary(modelobject)$fstatistic

@@ -8,6 +8,7 @@
 #' temp_treshold: min temperature to consider for stress
 #' stages: number of stages in which the corn stages will be divided
 #' Soil_groups: number of groups in which the soil charactheristics will be divided
+#' #' @author Marcos Paulo Pedrosa Alves
 
 require(plyr)
 require(car)
