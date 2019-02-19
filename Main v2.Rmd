@@ -1,6 +1,6 @@
 ---
 title: "Main"
-author: "Marcos Paulo Pedrosa ALves, PhD"
+author: "Marcos Paulo Pedrosa ALves"
 date: "Jan 17, 2018"
 output: html_document
 ---
